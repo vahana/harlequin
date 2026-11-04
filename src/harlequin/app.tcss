@@ -76,6 +76,14 @@ DataCatalog S3Tree {
     }
 }
 
+DataCatalog #catalog-filter {
+    dock: bottom;
+    height: 1;
+    border: none;
+    padding: 0 1;
+    background: $background;
+}
+
 DataCatalog * .harlequin-tree--type-label {
     color: $foreground-muted;
 }

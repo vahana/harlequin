@@ -3,12 +3,13 @@ from __future__ import annotations
 import asyncio
 from asyncio import PriorityQueue
 from collections import deque
-from typing import TYPE_CHECKING, Generator, Iterable, TypeVar
+from typing import TYPE_CHECKING, Any, Generator, Iterable, Sequence, TypeVar
 
 from rich.style import Style
 from rich.text import Text, TextType
 from textual import events, on, work
 from textual.await_complete import AwaitComplete
+from textual.message import Message
 from textual.reactive import var
 from textual.timer import Timer
 from textual.widgets._tree import NodeID, Tree, TreeNode
@@ -66,6 +67,9 @@ LOADING_ITEM = CatalogItem(
 """Sentinel data for the placeholder shown under a node while its children load."""
 
 
+TFilteredItem = TypeVar("TFilteredItem", bound=CatalogItem)
+
+
 class DatabaseTree(HarlequinTree[CatalogItem], inherit_bindings=False):
     catalog: var[Catalog | None] = var["Catalog | None"](
         None, init=False, always_update=True
@@ -103,6 +107,12 @@ class DatabaseTree(HarlequinTree[CatalogItem], inherit_bindings=False):
         self._prefetch_timer: Timer | None = None
         self._prefetch_paused = False
         """Prevents the loader from prefetching new nodes."""
+        self._filter_text = ""
+        """The casefolded text the tree is filtered by; empty shows everything."""
+        self._filter_segments: tuple[str, ...] = ()
+        """The filter text split on dots; each must match a level, in order."""
+        self._expanded_before_filter: set[str] | None = None
+        """The identifiers of the nodes that were expanded when filtering began."""
         super().__init__(
             label="Root",
             data=CatalogItem(
@@ -118,6 +128,9 @@ class DatabaseTree(HarlequinTree[CatalogItem], inherit_bindings=False):
             disabled=disabled,
         )
 
+    class StartFilter(Message):
+        pass
+
     def on_mount(self) -> None:
         self.loading = True
         self.show_root = False
@@ -125,6 +138,81 @@ class DatabaseTree(HarlequinTree[CatalogItem], inherit_bindings=False):
         self.root.expand()
         self._schedule_prefetch_scan()
         self.post_message(WidgetMounted(widget=self))
+
+    def action_start_filter(self) -> None:
+        self.post_message(self.StartFilter())
+
+    def set_filter(self, text: str) -> AwaitComplete:
+        filter_text = text.strip().casefold()
+        if filter_text and not self._filter_text:
+            self._expanded_before_filter = self._expanded_identifiers(self.root)
+        self._filter_text = filter_text
+        self._filter_segments = (
+            tuple(segment.strip() for segment in filter_text.split("."))
+            if filter_text
+            else ()
+        )
+        return self.reload()
+
+    @staticmethod
+    def _expanded_identifiers(root: TreeNode[CatalogItem]) -> set[str]:
+        expanded: set[str] = set()
+        to_check: list[TreeNode[CatalogItem]] = [root]
+        while to_check:
+            checking = to_check.pop()
+            if checking.allow_expand and checking.is_expanded:
+                if checking.data:
+                    expanded.add(checking.data.qualified_identifier)
+                to_check.extend(checking.children)
+        return expanded
+
+    @staticmethod
+    def _label_contains(item: CatalogItem, segment: str) -> bool:
+        return segment in item.label.casefold()
+
+    def _item_keeps(self, item: CatalogItem, segments: Sequence[str]) -> bool:
+        if self._label_contains(item, segments[0]):
+            if len(segments) == 1:
+                return True
+            if any(self._item_keeps(child, segments[1:]) for child in item.children):
+                return True
+        return any(self._item_keeps(child, segments) for child in item.children)
+
+    def _consumed_segments(self, node: TreeNode[Any]) -> int:
+        labels: list[str] = []
+        current: TreeNode[Any] | None = node
+        while current is not None and current.parent is not None:
+            if current.data is not None:
+                labels.append(current.data.label.casefold())
+            current = current.parent
+        consumed = 0
+        for label in reversed(labels):
+            if (
+                consumed < len(self._filter_segments)
+                and self._filter_segments[consumed] in label
+            ):
+                consumed += 1
+        return consumed
+
+    def _has_filter_matches_below(self, node: TreeNode[CatalogItem]) -> bool:
+        if node.data is None or not self._filter_segments:
+            return False
+        consumed = self._consumed_segments(node)
+        if consumed >= len(self._filter_segments):
+            return False
+        remaining = self._filter_segments[consumed:]
+        return any(self._item_keeps(child, remaining) for child in node.data.children)
+
+    def _apply_filter(
+        self, node: TreeNode[Any], items: Sequence[TFilteredItem]
+    ) -> list[TFilteredItem]:
+        if not self._filter_segments:
+            return list(items)
+        consumed = self._consumed_segments(node)
+        if consumed >= len(self._filter_segments):
+            return list(items)
+        remaining = self._filter_segments[consumed:]
+        return [item for item in items if self._item_keeps(item, remaining)]
 
     def _build_item_label(self, label: str, type_label: str) -> Text:
         type_label_style = self.get_component_rich_style("harlequin-tree--type-label")
@@ -334,14 +422,10 @@ class DatabaseTree(HarlequinTree[CatalogItem], inherit_bindings=False):
         """
         async with self.lock:
             # Track nodes that were expanded before reloading.
-            currently_open: set[str] = set()
-            to_check: list[TreeNode[CatalogItem]] = [node]
-            while to_check:
-                checking = to_check.pop()
-                if checking.allow_expand and checking.is_expanded:
-                    if checking.data:
-                        currently_open.add(checking.data.qualified_identifier)
-                    to_check.extend(checking.children)
+            currently_open = self._expanded_identifiers(node)
+            if not self._filter_text and self._expanded_before_filter is not None:
+                currently_open = self._expanded_before_filter
+                self._expanded_before_filter = None
 
             # Track node that was highlighted before reloading.
             highlighted_identifier: None | str = None
@@ -366,6 +450,7 @@ class DatabaseTree(HarlequinTree[CatalogItem], inherit_bindings=False):
                 if reopening.allow_expand and (
                     reopening.data.qualified_identifier in currently_open
                     or reopening == node
+                    or self._has_filter_matches_below(reopening)
                 ):
                     try:
                         content = await self._load_children(reopening.data).wait()
@@ -441,6 +526,7 @@ class DatabaseTree(HarlequinTree[CatalogItem], inherit_bindings=False):
             content: The CatalogItems to populate the node with.
         """
         items = list(content)
+        items = self._apply_filter(node, items)
         async with self.lock:
             node.remove_children()
         for offset in range(0, len(items), POPULATE_CHUNK_SIZE):

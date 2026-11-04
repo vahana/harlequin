@@ -82,6 +82,7 @@ VSCODE_DATA_CATALOG_BINDINGS = [
     HarlequinKeyBinding("up", "data_catalog.cursor_up"),
     HarlequinKeyBinding("down", "data_catalog.cursor_down"),
     HarlequinKeyBinding("full_stop", "data_catalog.show_context_menu"),
+    HarlequinKeyBinding("slash", "data_catalog.filter"),
     HarlequinKeyBinding("escape", "data_catalog.hide_context_menu"),
 ]
 VSCODE_RESULTS_VIEWER_BINDINGS = [

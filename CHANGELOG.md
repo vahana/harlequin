@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Features
+
+- Press `/` in the Data Catalog's Databases tab to filter it as you type. Separate levels with a dot, like `mydb.mytable`, to match a table only in one database. `Enter` returns to the tree and keeps the filter; `Esc` clears it.
+
 ### Bug Fixes
 
 - For SQLite, the Data Catalog's **Describe** action now inserts a query that runs, and **Show DDL** shows the right DDL for tables and views in an attached database.

@@ -16,6 +16,7 @@ from harlequin.components import (
     ResultsViewer,
 )
 from harlequin.components.data_catalog import ContextMenu
+from harlequin.components.data_catalog.database_tree import DatabaseTree
 
 if TYPE_CHECKING:
     from textual.widget import Widget
@@ -257,6 +258,12 @@ HARLEQUIN_ACTIONS = {
     ),
     "data_catalog.copy_name": Action(
         target=HarlequinTree, action="copy", description="Copy Name"
+    ),
+    "data_catalog.filter": Action(
+        target=DatabaseTree,
+        action="start_filter",
+        description="Filter",
+        show=True,
     ),
     "data_catalog.select_cursor": Action(target=HarlequinTree, action="select_cursor"),
     "data_catalog.toggle_node": Action(target=HarlequinTree, action="toggle_node"),

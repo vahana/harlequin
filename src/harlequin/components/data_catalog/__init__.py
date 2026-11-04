@@ -5,12 +5,14 @@ from typing import TYPE_CHECKING, ClassVar, Sequence
 
 from rich.markup import escape
 from textual import on
+from textual.binding import Binding
 from textual.content import ContentType
 from textual.css.query import InvalidQueryFormat, NoMatches
 from textual.message import Message
 from textual.widget import Widget
 from textual.widgets import (
     DirectoryTree,
+    Input,
     OptionList,
     TabbedContent,
     TabPane,
@@ -119,6 +121,16 @@ class ContextMenu(OptionList):
         self.remove_class("open")
 
 
+class CatalogFilterInput(Input):
+    BINDINGS = [Binding("escape", "close", "Close Filter", show=False)]
+
+    class Closed(Message):
+        pass
+
+    def action_close(self) -> None:
+        self.post_message(self.Closed())
+
+
 class DataCatalog(TabbedContent, can_focus=True):
     BORDER_TITLE = "Data Catalog"
 
@@ -194,6 +206,38 @@ class DataCatalog(TabbedContent, can_focus=True):
     ) -> None:
         event.stop()
         self.database_context_menu.reload(node=event.node)
+
+    @on(DatabaseTree.StartFilter)
+    async def show_filter(self, event: DatabaseTree.StartFilter) -> None:
+        event.stop()
+        existing_inputs = self.query(CatalogFilterInput)
+        if existing_inputs:
+            existing_inputs.first().focus()
+            return
+        database_pane = self.database_tree.parent
+        assert isinstance(database_pane, TabPane)
+        filter_input = CatalogFilterInput(
+            id="catalog-filter", placeholder="Filter…", select_on_focus=False
+        )
+        await database_pane.mount(filter_input)
+        filter_input.focus()
+
+    @on(Input.Changed, "#catalog-filter")
+    async def apply_filter(self, event: Input.Changed) -> None:
+        event.stop()
+        await self.database_tree.set_filter(event.value)
+
+    @on(Input.Submitted, "#catalog-filter")
+    def focus_tree_after_filter(self, event: Input.Submitted) -> None:
+        event.stop()
+        self.database_tree.focus()
+
+    @on(CatalogFilterInput.Closed)
+    async def close_filter(self, event: CatalogFilterInput.Closed) -> None:
+        event.stop()
+        self.database_tree.focus()
+        await self.query(CatalogFilterInput).remove()
+        await self.database_tree.set_filter("")
 
     async def show_file_tree(self, path: Path) -> None:
         """Show `path` in the Files tab, adding the tab if there is none."""
