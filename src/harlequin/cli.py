@@ -586,11 +586,41 @@ def build_cli(argv: Sequence[str]) -> click.Command:
     return cmd
 
 
+def _is_interactive() -> bool:
+    return sys.stdin.isatty() and sys.stdout.isatty()
+
+
+def choose_connection(argv: Sequence[str]) -> list[str]:
+    """Let the user pick a saved connection when Harlequin starts with no arguments.
+
+    Returns the arguments to launch with: `-P <profile>` for a chosen connection,
+    and no arguments for the default session. Exits if the user quits.
+    """
+    if argv or not _is_interactive():
+        return list(argv)
+
+    from harlequin.connections import list_connections
+
+    saved_connections = list_connections()
+    if not saved_connections or any(c.is_default for c in saved_connections):
+        return []
+
+    from harlequin.connections_app import ConnectionsApp
+
+    result = ConnectionsApp().run()
+    if result is None or result.action == "quit":
+        sys.exit(0)
+    if result.action == "connect" and result.profile is not None:
+        return ["-P", result.profile]
+    return []
+
+
 def harlequin() -> None:
     """
     The main entrypoint for the Harlequin IDE. Builds and executes the click Command.
     """
-    cli = build_cli(sys.argv[1:])
+    argv = choose_connection(sys.argv[1:])
+    cli = build_cli(argv)
     with warnings.catch_warnings():
         # Two installed adapters can claim the same flag for different options --
         # -u is duckdb's --allow-unsigned-extensions and postgres' --user, and -d
@@ -603,4 +633,4 @@ def harlequin() -> None:
             message="The parameter .* is used more than once",
             category=UserWarning,
         )
-        cli()
+        cli(args=argv)

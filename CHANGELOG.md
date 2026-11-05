@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Features
 
 - Press `/` in the Data Catalog's Databases tab to filter it as you type. Separate levels with a dot, like `mydb.mytable`, to match a table only in one database. `Enter` returns to the tree and keeps the filter; `Esc` clears it.
+- Running `harlequin` with no arguments now opens a connection screen when you have saved profiles and no `default_profile`. Press `Enter` to connect, `a` to add, `e` to edit, `d` to delete, and `Esc` or `n` to start the default session.
 
 ### Bug Fixes
 
