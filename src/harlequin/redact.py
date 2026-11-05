@@ -186,6 +186,12 @@ def _is_secret(key: str, declared: Mapping[str, AbstractOption]) -> bool:
     return _SECRET_NAME.search(key) is not None
 
 
+def option_is_secret(option: AbstractOption) -> bool:
+    """Whether an option is declared secret or named like a secret."""
+    key = sluggify_option_name(option.name)
+    return _is_secret(key, {key: option})
+
+
 def _masked(value: Any) -> Any:
     """A secret value as it prints: a mask, or a list of them.
 

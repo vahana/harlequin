@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Features
+
+- Running `harlequin` with no arguments now opens a connection screen when you have saved profiles and no `default_profile`. Press `Enter` to connect, `a` to add, `e` to edit, `d` to delete, and `Esc` or `n` to start the default session.
+
 ### Bug Fixes
 
 - For SQLite, the Data Catalog's **Describe** action now inserts a query that runs, and **Show DDL** shows the right DDL for tables and views in an attached database.
